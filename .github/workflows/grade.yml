@@ -1,0 +1,70 @@
+name: Auto Grade
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout student code
+        uses: actions/checkout@v4
+        with:
+          path: student
+
+      - name: Checkout official grading repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/grading-official
+          path: official
+          token: ${{ secrets.GRADING_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t grader official/
+
+      - name: Create student zip
+        run: |
+          cd student
+          zip -r /tmp/student.zip .
+
+      - name: Run grading
+        id: grade
+        run: |
+          RESULT=$(docker run --rm \
+            -v /tmp/student.zip:/work/student.zip:ro \
+            grader)
+          echo "$RESULT"
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+
+      - name: Parse and display results
+        run: |
+          echo "### Grading Results" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.grade.outputs.result }}' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result = ${{ steps.grade.outputs.result }};
+            const body = `## 🤖 Auto Grading Results
+
+            - **Status**: ${result.status}
+            - **Grade**: ${result.grade}
+            - **Tests Passed**: ${result.pass || 0}/${result.total || 0}
+
+            ${result.grade >= 95 ? '✅ Great job!' : '⚠️ Please review and fix the issues.'}`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
