@@ -9,6 +9,8 @@ on:
 jobs:
   grade:
     runs-on: ubuntu-latest
+    env:
+      HW: ${{ secrets.GRADING_HW != '' && secrets.GRADING_HW || 'hw01' }}
 
     steps:
       - name: Checkout student code
@@ -37,6 +39,7 @@ jobs:
         run: |
           RESULT=$(docker run --rm \
             -v /tmp/student.zip:/work/student.zip:ro \
+            -e HW="$HW" \
             grader)
           echo "$RESULT"
           echo "result=$RESULT" >> $GITHUB_OUTPUT
